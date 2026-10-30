@@ -9,110 +9,363 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   ios:
+    name: Build and Sign Reality Shift for iOS
     runs-on: macos-26
-    permissions:
-      contents: read
+    timeout-minutes: 60
+
     env:
       APP_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.agdevelps.realityshift' }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      PROFILE_NAME: ${{ vars.IOS_PROFILE_NAME }}
+
       IOS_ADMOB_APP_ID: ${{ vars.IOS_ADMOB_APP_ID || 'ca-app-pub-7694497723149363~4777319882' }}
       IOS_ADMOB_REWARDED_ID: ${{ vars.IOS_ADMOB_REWARDED_ID || 'ca-app-pub-7694497723149363/6627081469' }}
       IOS_ADMOB_INTERSTITIAL_ID: ${{ vars.IOS_ADMOB_INTERSTITIAL_ID || 'ca-app-pub-7694497723149363/4454932430' }}
-      PROFILE_NAME: ${{ vars.IOS_PROFILE_NAME }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      # 1. Download the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Check release configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          for name in APP_BUNDLE_ID APPLE_TEAM_ID IOS_ADMOB_APP_ID IOS_ADMOB_REWARDED_ID IOS_ADMOB_INTERSTITIAL_ID PROFILE_NAME; do
-            if [ -z "${!name}" ]; then echo "Missing GitHub variable: $name"; exit 1; fi
-          done
-          if [[ "$APP_BUNDLE_ID" == com.example.* ]] || [[ "$IOS_ADMOB_APP_ID" == ca-app-pub-3940256099942544* ]]; then
-            echo 'Release identifiers still contain placeholder/test values'; exit 1
-          fi
-          if [[ "$IOS_ADMOB_REWARDED_ID" == ca-app-pub-3940256099942544* ]] || [[ "$IOS_ADMOB_INTERSTITIAL_ID" == ca-app-pub-3940256099942544* ]]; then
-            echo 'Production rewarded and interstitial ad unit IDs are required'; exit 1
-          fi
-          for name in BUILD_CERTIFICATE_BASE64 P12_PASSWORD BUILD_PROVISION_PROFILE_BASE64 KEYCHAIN_PASSWORD; do
-            if [ -z "${!name}" ]; then echo "Missing GitHub secret: $name"; exit 1; fi
-          done
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      - name: Install signing certificate and profile
+
+      # 3. Validate configuration and required secrets
+      - name: Validate release configuration
         shell: bash
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          UPLOAD_REQUESTED: ${{ inputs.upload_to_app_store_connect }}
         run: |
           set -euo pipefail
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/distribution.mobileprovision"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/release.keychain-db"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security import "$RUNNER_TEMP/distribution.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$RUNNER_TEMP/release.keychain-db"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security list-keychain -d user -s "$RUNNER_TEMP/release.keychain-db"
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$RUNNER_TEMP/distribution.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/"
-      - name: Configure iOS release identifiers
+
+          for name in \
+            APP_BUNDLE_ID \
+            APPLE_TEAM_ID \
+            PROFILE_NAME \
+            IOS_ADMOB_APP_ID \
+            IOS_ADMOB_REWARDED_ID \
+            IOS_ADMOB_INTERSTITIAL_ID
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub repository variable: $name"
+              exit 1
+            fi
+          done
+
+          for name in \
+            BUILD_CERTIFICATE_BASE64 \
+            P12_PASSWORD \
+            BUILD_PROVISION_PROFILE_BASE64 \
+            KEYCHAIN_PASSWORD
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub repository secret: $name"
+              exit 1
+            fi
+          done
+
+          if [[ "$APP_BUNDLE_ID" == com.example.* ]]; then
+            echo "::error::APP_BUNDLE_ID is still a placeholder."
+            exit 1
+          fi
+
+          if [[ "$IOS_ADMOB_APP_ID" == ca-app-pub-3940256099942544* ]] || \
+             [[ "$IOS_ADMOB_REWARDED_ID" == ca-app-pub-3940256099942544* ]] || \
+             [[ "$IOS_ADMOB_INTERSTITIAL_ID" == ca-app-pub-3940256099942544* ]]; then
+            echo "::error::Replace Google test AdMob identifiers with your production IDs."
+            exit 1
+          fi
+
+          if [[ "$UPLOAD_REQUESTED" == "true" ]]; then
+            for name in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+              if [[ -z "${!name}" ]]; then
+                echo "::error::Missing App Store Connect secret: $name"
+                exit 1
+              fi
+            done
+          fi
+
+          echo "Release configuration checks passed."
+          echo "Bundle ID: $APP_BUNDLE_ID"
+          echo "Profile name: $PROFILE_NAME"
+          echo "App Store Connect upload requested: $UPLOAD_REQUESTED"
+
+      # 4. Check the iOS project exists
+      - name: Check iOS project
         shell: bash
         run: |
-          python3 - <<'PY'
-          import os, pathlib, plistlib
-          project = pathlib.Path('ios/Runner.xcodeproj/project.pbxproj')
-          text = project.read_text()
-          old = 'PRODUCT_BUNDLE_IDENTIFIER = com.agdevelps.realityshift;'
-          if text.count(old) != 3:
-              raise SystemExit('Unexpected Runner bundle ID layout; update iOS signing config')
-          text = text.replace(old, f'PRODUCT_BUNDLE_IDENTIFIER = {os.environ["APP_BUNDLE_ID"]};')
-          marker = '97C147071CF9000F007C117D /* Release */ = {'
-          start = text.index(marker)
-          settings = text.index('buildSettings = {', start) + len('buildSettings = {')
-          signing = f'''\n                CODE_SIGN_STYLE = Manual;
-                DEVELOPMENT_TEAM = {os.environ["APPLE_TEAM_ID"]};
-                PROVISIONING_PROFILE_SPECIFIER = "{os.environ["PROFILE_NAME"]}";
-                CODE_SIGN_IDENTITY = "Apple Distribution";'''
-          text = text[:settings] + signing + text[settings:]
-          project.write_text(text)
-          info = pathlib.Path('ios/Runner/Info.plist')
-          with info.open('rb') as handle: data = plistlib.load(handle)
-          data['GADApplicationIdentifier'] = os.environ['IOS_ADMOB_APP_ID']
-          with info.open('wb') as handle: plistlib.dump(data, handle)
-          export = {
-              'method': 'app-store-connect', 'signingStyle': 'manual',
-              'teamID': os.environ['APPLE_TEAM_ID'],
-              'provisioningProfiles': {os.environ['APP_BUNDLE_ID']: os.environ['PROFILE_NAME']},
+          set -euo pipefail
+
+          test -f ios/Runner.xcodeproj/project.pbxproj || {
+            echo "::error::ios/Runner.xcodeproj/project.pbxproj was not found."
+            exit 1
           }
-          with open('ios/ExportOptions.plist', 'wb') as handle: plistlib.dump(export, handle)
+
+          test -f ios/Runner/Info.plist || {
+            echo "::error::ios/Runner/Info.plist was not found."
+            exit 1
+          }
+
+          echo "iOS project files found."
+
+      # 5. Install the signing certificate and provisioning profile
+      - name: Install Apple signing credentials
+        shell: bash
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/distribution.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/reality-shift.keychain-db"
+
+          # Decode the P12 certificate.
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" |
+            base64 --decode > "$CERT_PATH"
+
+          # Decode the provisioning profile.
+          printf '%s' "$BUILD_PROVISION_PROFILE_BASE64" |
+            base64 --decode > "$PROFILE_PATH"
+
+          # Create and unlock a temporary keychain.
+          security create-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security set-keychain-settings \
+            -lut 21600 \
+            "$KEYCHAIN_PATH"
+
+          security unlock-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          # Import the Apple Distribution certificate and private key.
+          security import "$CERT_PATH" \
+            -P "$P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security list-keychain \
+            -d user \
+            -s "$KEYCHAIN_PATH"
+
+          # Decode profile metadata.
+          security cms \
+            -D \
+            -i "$PROFILE_PATH" \
+            > "$RUNNER_TEMP/profile.plist"
+
+          # Read profile UUID, name, team and application identifier.
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy \
+            -c 'Print UUID' \
+            "$RUNNER_TEMP/profile.plist")
+
+          PROFILE_ACTUAL_NAME=$(/usr/libexec/PlistBuddy \
+            -c 'Print Name' \
+            "$RUNNER_TEMP/profile.plist")
+
+          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy \
+            -c 'Print :TeamIdentifier:0' \
+            "$RUNNER_TEMP/profile.plist")
+
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy \
+            -c 'Print :Entitlements:application-identifier' \
+            "$RUNNER_TEMP/profile.plist")
+
+          echo "Provisioning profile UUID: $PROFILE_UUID"
+          echo "Provisioning profile name: $PROFILE_ACTUAL_NAME"
+
+          if [[ "$PROFILE_ACTUAL_NAME" != "$PROFILE_NAME" ]]; then
+            echo "::error::The installed profile name does not match IOS_PROFILE_NAME."
+            exit 1
+          fi
+
+          if [[ "$PROFILE_TEAM_ID" != "$APPLE_TEAM_ID" ]]; then
+            echo "::error::Provisioning profile team ID does not match APPLE_TEAM_ID."
+            exit 1
+          fi
+
+          EXPECTED_APP_ID="${APPLE_TEAM_ID}.${APP_BUNDLE_ID}"
+
+          if [[ "$PROFILE_APP_ID" != "$EXPECTED_APP_ID" && \
+                "$PROFILE_APP_ID" != "${APPLE_TEAM_ID}.*" ]]; then
+            echo "::error::Provisioning profile application identifier does not match the configured bundle ID."
+            exit 1
+          fi
+
+          # Install using the UUID as the filename.
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+
+          cp "$PROFILE_PATH" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+
+          # Export metadata for later steps.
+          {
+            echo "PROFILE_UUID=$PROFILE_UUID"
+            echo "PROFILE_ACTUAL_NAME=$PROFILE_ACTUAL_NAME"
+          } >> "$GITHUB_ENV"
+
+          echo "Signing certificate and provisioning profile installed."
+
+      # 6. Configure Xcode signing, bundle ID and AdMob app ID.
+      - name: Configure iOS release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import plistlib
+
+          project_path = pathlib.Path(
+              "ios/Runner.xcodeproj/project.pbxproj"
+          )
+
+          text = project_path.read_text()
+
+          old_bundle_id = "com.agdevelps.realityshift"
+          new_bundle_id = os.environ["APP_BUNDLE_ID"]
+
+          if old_bundle_id != new_bundle_id:
+              count = text.count(
+                  f"PRODUCT_BUNDLE_IDENTIFIER = {old_bundle_id};"
+              )
+
+              if count == 0:
+                  raise SystemExit(
+                      "Expected original bundle ID was not found in "
+                      "project.pbxproj. Check the existing Xcode project."
+                  )
+
+              text = text.replace(
+                  f"PRODUCT_BUNDLE_IDENTIFIER = {old_bundle_id};",
+                  f"PRODUCT_BUNDLE_IDENTIFIER = {new_bundle_id};"
+              )
+
+          # Apply manual signing settings to the Runner Release configuration.
+          marker = "97C147071CF9000F007C117D /* Release */ = {"
+
+          if marker not in text:
+              raise SystemExit(
+                  "Could not find the expected Runner Release configuration. "
+                  "Inspect ios/Runner.xcodeproj/project.pbxproj."
+              )
+
+          start = text.index(marker)
+          settings_start = text.index("buildSettings = {", start)
+          settings_start += len("buildSettings = {")
+
+          signing = f"""
+                  CODE_SIGN_STYLE = Manual;
+                  DEVELOPMENT_TEAM = {os.environ["APPLE_TEAM_ID"]};
+                  PROVISIONING_PROFILE_SPECIFIER = "{os.environ["PROFILE_NAME"]}";
+                  CODE_SIGN_IDENTITY = "Apple Distribution";
+          """
+
+          text = (
+              text[:settings_start]
+              + signing
+              + text[settings_start:]
+          )
+
+          project_path.write_text(text)
+
+          # Set the AdMob iOS application identifier.
+          info_path = pathlib.Path("ios/Runner/Info.plist")
+
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+
+          info["GADApplicationIdentifier"] = os.environ[
+              "IOS_ADMOB_APP_ID"
+          ]
+
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle)
+
+          # Generate Xcode export options.
+          export_options = {
+              "method": "app-store-connect",
+              "signingStyle": "manual",
+              "teamID": os.environ["APPLE_TEAM_ID"],
+              "provisioningProfiles": {
+                  os.environ["APP_BUNDLE_ID"]:
+                      os.environ["PROFILE_NAME"]
+              },
+          }
+
+          export_path = pathlib.Path("ios/ExportOptions.plist")
+
+          with export_path.open("wb") as handle:
+              plistlib.dump(export_options, handle)
+
+          print("iOS bundle ID and signing configuration prepared.")
           PY
-      - name: Resolve packages
+
+      # 7. Resolve Flutter packages
+      - name: Resolve Flutter packages
         run: flutter pub get
+
+      # 8. Analyze Dart code
       - name: Analyze Dart code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      # 9. Build the signed IPA
       - name: Build signed IPA
+        shell: bash
         run: |
-          flutter build ipa --release --build-number="$((GITHUB_RUN_NUMBER + 6))" \
+          set -euo pipefail
+
+          flutter build ipa \
+            --release \
+            --build-number="$((GITHUB_RUN_NUMBER + 6))" \
             --export-options-plist=ios/ExportOptions.plist \
             --dart-define=ADMOB_IOS_REWARDED_ID="$IOS_ADMOB_REWARDED_ID" \
             --dart-define=ADMOB_IOS_INTERSTITIAL_ID="$IOS_ADMOB_INTERSTITIAL_ID"
-      - uses: actions/upload-artifact@v4
+
+          test -n "$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)"
+
+          echo "Signed IPA build completed."
+
+      # 10. Save the IPA as a downloadable workflow artifact
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
         with:
           name: reality-shift-ios-ipa
           path: build/ios/ipa/*.ipa
           if-no-files-found: error
+          retention-days: 14
+
+      # 11. Upload the IPA to App Store Connect if requested
       - name: Upload to App Store Connect
         if: ${{ inputs.upload_to_app_store_connect }}
         shell: bash
@@ -122,7 +375,46 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          test -n "$ASC_KEY_ID" && test -n "$ASC_ISSUER_ID" && test -n "$ASC_PRIVATE_KEY"
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
-          xcrun altool --upload-app --type ios -f build/ios/ipa/*.ipa --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing App Store Connect secret: $name"
+              exit 1
+            fi
+          done
+
+          IPA_PATHS=(build/ios/ipa/*.ipa)
+
+          if [[ ! -f "${IPA_PATHS[0]}" ]]; then
+            echo "::error::No IPA file was found for upload."
+            exit 1
+          fi
+
+          # Install the API key where Apple's tooling expects it.
+          API_KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$API_KEY_DIR"
+
+          printf '%s' "$ASC_PRIVATE_KEY" \
+            > "$API_KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
+
+          chmod 600 "$API_KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
+
+          # Upload the signed IPA.
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            -f "${IPA_PATHS[0]}" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+          echo "IPA upload submitted to App Store Connect."
+
+      # 12. Always report the result of this job
+      - name: Build summary
+        if: always()
+        shell: bash
+        run: |
+          echo "Workflow: iOS release"
+          echo "Bundle ID: $APP_BUNDLE_ID"
+          echo "Build number: $((GITHUB_RUN_NUMBER + 6))"
+          echo "Upload requested: ${{ inputs.upload_to_app_store_connect }}"
