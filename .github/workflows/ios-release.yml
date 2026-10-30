@@ -28,7 +28,7 @@ jobs:
       IOS_ADMOB_INTERSTITIAL_ID: ${{ vars.IOS_ADMOB_INTERSTITIAL_ID || 'ca-app-pub-7694497723149363/4454932430' }}
 
     steps:
-      # 1. Download the repository
+      # 1. Download repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -39,7 +39,7 @@ jobs:
           channel: stable
           cache: true
 
-      # 3. Validate configuration and required secrets
+      # 3. Validate configuration and secrets
       - name: Validate release configuration
         shell: bash
         env:
@@ -88,7 +88,7 @@ jobs:
           if [[ "$IOS_ADMOB_APP_ID" == ca-app-pub-3940256099942544* ]] || \
              [[ "$IOS_ADMOB_REWARDED_ID" == ca-app-pub-3940256099942544* ]] || \
              [[ "$IOS_ADMOB_INTERSTITIAL_ID" == ca-app-pub-3940256099942544* ]]; then
-            echo "::error::Replace Google test AdMob identifiers with your production IDs."
+            echo "::error::Replace Google test AdMob identifiers with production IDs."
             exit 1
           fi
 
@@ -124,7 +124,7 @@ jobs:
 
           echo "iOS project files found."
 
-      # 5. Install the signing certificate and provisioning profile
+      # 5. Install signing certificate and provisioning profile
       - name: Install Apple signing credentials
         shell: bash
         env:
@@ -138,8 +138,9 @@ jobs:
           CERT_PATH="$RUNNER_TEMP/distribution.p12"
           PROFILE_PATH="$RUNNER_TEMP/distribution.mobileprovision"
           KEYCHAIN_PATH="$RUNNER_TEMP/reality-shift.keychain-db"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
 
-          # Decode the P12 certificate.
+          # Decode the distribution certificate.
           printf '%s' "$BUILD_CERTIFICATE_BASE64" |
             base64 --decode > "$CERT_PATH"
 
@@ -177,42 +178,68 @@ jobs:
             -d user \
             -s "$KEYCHAIN_PATH"
 
-          # Decode profile metadata.
+          # Decode the signed provisioning profile.
           security cms \
             -D \
             -i "$PROFILE_PATH" \
-            > "$RUNNER_TEMP/profile.plist"
+            > "$PROFILE_PLIST"
 
-          # Read profile UUID, name, team and application identifier.
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy \
-            -c 'Print UUID' \
-            "$RUNNER_TEMP/profile.plist")
+          # Read profile metadata using Python plistlib.
+          # This avoids relying on PlistBuddy to parse the TeamIdentifier array.
+          PROFILE_UUID=$(python3 -c '
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              print(plistlib.load(f)["UUID"])
+          ' "$PROFILE_PLIST")
 
-          PROFILE_ACTUAL_NAME=$(/usr/libexec/PlistBuddy \
-            -c 'Print Name' \
-            "$RUNNER_TEMP/profile.plist")
+          PROFILE_ACTUAL_NAME=$(python3 -c '
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              print(plistlib.load(f)["Name"])
+          ' "$PROFILE_PLIST")
 
-          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy \
-            -c 'Print :TeamIdentifier:0' \
-            "$RUNNER_TEMP/profile.plist")
+          PROFILE_TEAM_ID=$(python3 -c '
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              profile = plistlib.load(f)
+              teams = profile.get("TeamIdentifier", [])
+              print(teams[0].strip() if teams else "")
+          ' "$PROFILE_PLIST")
 
-          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy \
-            -c 'Print :Entitlements:application-identifier' \
-            "$RUNNER_TEMP/profile.plist")
+          PROFILE_APP_ID=$(python3 -c '
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              profile = plistlib.load(f)
+              entitlements = profile.get("Entitlements", {})
+              print(entitlements.get("application-identifier", ""))
+          ' "$PROFILE_PLIST")
+
+          # Normalize whitespace.
+          PROFILE_UUID="$(printf '%s' "$PROFILE_UUID" | xargs)"
+          PROFILE_ACTUAL_NAME="$(printf '%s' "$PROFILE_ACTUAL_NAME" | xargs)"
+          PROFILE_TEAM_ID="$(printf '%s' "$PROFILE_TEAM_ID" | xargs)"
+          PROFILE_APP_ID="$(printf '%s' "$PROFILE_APP_ID" | xargs)"
+          APPLE_TEAM_ID="$(printf '%s' "$APPLE_TEAM_ID" | xargs)"
 
           echo "Provisioning profile UUID: $PROFILE_UUID"
           echo "Provisioning profile name: $PROFILE_ACTUAL_NAME"
+          echo "Expected Team ID: [$APPLE_TEAM_ID]"
+          echo "Actual profile Team ID: [$PROFILE_TEAM_ID]"
+          echo "Profile application identifier: $PROFILE_APP_ID"
 
+          # Validate profile name.
           if [[ "$PROFILE_ACTUAL_NAME" != "$PROFILE_NAME" ]]; then
             echo "::error::The installed profile name does not match IOS_PROFILE_NAME."
             exit 1
           fi
 
+          # Validate Team ID.
           if [[ "$PROFILE_TEAM_ID" != "$APPLE_TEAM_ID" ]]; then
             echo "::error::Provisioning profile team ID does not match APPLE_TEAM_ID."
             exit 1
           fi
 
+          # Validate application identifier.
           EXPECTED_APP_ID="${APPLE_TEAM_ID}.${APP_BUNDLE_ID}"
 
           if [[ "$PROFILE_APP_ID" != "$EXPECTED_APP_ID" && \
@@ -221,13 +248,13 @@ jobs:
             exit 1
           fi
 
-          # Install using the UUID as the filename.
+          # Install the profile using its UUID as the filename.
           PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$PROFILE_DIR"
 
           cp "$PROFILE_PATH" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
 
-          # Export metadata for later steps.
+          # Export metadata for later workflow steps.
           {
             echo "PROFILE_UUID=$PROFILE_UUID"
             echo "PROFILE_ACTUAL_NAME=$PROFILE_ACTUAL_NAME"
@@ -235,7 +262,7 @@ jobs:
 
           echo "Signing certificate and provisioning profile installed."
 
-      # 6. Configure Xcode signing, bundle ID and AdMob app ID.
+      # 6. Configure Xcode signing, bundle ID, and AdMob
       - name: Configure iOS release
         shell: bash
         run: |
@@ -256,9 +283,14 @@ jobs:
           new_bundle_id = os.environ["APP_BUNDLE_ID"]
 
           if old_bundle_id != new_bundle_id:
-              count = text.count(
+              old_identifier = (
                   f"PRODUCT_BUNDLE_IDENTIFIER = {old_bundle_id};"
               )
+              new_identifier = (
+                  f"PRODUCT_BUNDLE_IDENTIFIER = {new_bundle_id};"
+              )
+
+              count = text.count(old_identifier)
 
               if count == 0:
                   raise SystemExit(
@@ -266,12 +298,9 @@ jobs:
                       "project.pbxproj. Check the existing Xcode project."
                   )
 
-              text = text.replace(
-                  f"PRODUCT_BUNDLE_IDENTIFIER = {old_bundle_id};",
-                  f"PRODUCT_BUNDLE_IDENTIFIER = {new_bundle_id};"
-              )
+              text = text.replace(old_identifier, new_identifier)
 
-          # Apply manual signing settings to the Runner Release configuration.
+          # Locate the Runner Release build configuration.
           marker = "97C147071CF9000F007C117D /* Release */ = {"
 
           if marker not in text:
@@ -299,7 +328,7 @@ jobs:
 
           project_path.write_text(text)
 
-          # Set the AdMob iOS application identifier.
+          # Configure the AdMob iOS application identifier.
           info_path = pathlib.Path("ios/Runner/Info.plist")
 
           with info_path.open("rb") as handle:
@@ -365,7 +394,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # 11. Upload the IPA to App Store Connect if requested
+      # 11. Upload to App Store Connect if requested
       - name: Upload to App Store Connect
         if: ${{ inputs.upload_to_app_store_connect }}
         shell: bash
