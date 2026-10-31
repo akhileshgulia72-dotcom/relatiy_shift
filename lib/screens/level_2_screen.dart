@@ -288,12 +288,12 @@ class _Level2ScreenState extends State<Level2Screen>
                       padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
                       child: Row(
                         children: [
-                          IconButton(
+                          IconButton.filledTonal(
                             tooltip: 'Back to levels',
                             onPressed: () => Navigator.maybePop(context),
                             icon: const Icon(
                               Icons.arrow_back_rounded,
-                              color: Colors.white70,
+                              color: Colors.white,
                             ),
                           ),
                           const Spacer(),

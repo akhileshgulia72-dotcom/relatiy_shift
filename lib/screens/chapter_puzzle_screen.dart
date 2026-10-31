@@ -512,7 +512,7 @@ class _ChapterPuzzleScreenState extends State<ChapterPuzzleScreen>
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ChapterPuzzleScreen(level: widget.level + 1),
+          builder: (_) => campaignPageForLevel(widget.level + 1)!,
         ),
       );
     } else {
@@ -2189,31 +2189,12 @@ class _ChapterPuzzleScreenState extends State<ChapterPuzzleScreen>
           : destNodeId;
 
       setState(() {
-        _archPlayerNode = stepNodeId;
         _archTeleporting = false;
         _archStatus =
             'Emerged from ${_archPortalNames[destPortal]}! Explore the island.';
       });
-      unawaited(_playParallelSound('parallel_step.wav'));
-
-      final stepNode = _archNodes[stepNodeId];
-      if (stepNode.switchIndex != null) {
-        final sw = stepNode.switchIndex!;
-        if (!_archActivatedSwitches.contains(sw)) {
-          setState(() {
-            _archActivatedSwitches.add(sw);
-            if (_archActivatedSwitches.length == 3) {
-              _archExitOpen = true;
-              _archStatus =
-                  'ALL 3 SWITCHES ACTIVATED! THE GRAND EXIT GATEWAY IS UNSEALED!';
-            } else {
-              _archStatus =
-                  'Switch $sw activated! [${_archActivatedSwitches.length}/3 switches ready]';
-            }
-          });
-          unawaited(_playParallelSound('parallel_complete.wav'));
-        }
-      }
+      // Apply switch and exit checks to teleport arrivals as well as walking.
+      _setArchPlayerNode(stepNodeId);
     });
   }
 
@@ -3436,6 +3417,14 @@ class _ChapterPuzzleScreenState extends State<ChapterPuzzleScreen>
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  const Text(
+                    'CONGRATULATIONS!',
+                    style: TextStyle(
+                      color: Color(0xFF65B9D0),
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 9),

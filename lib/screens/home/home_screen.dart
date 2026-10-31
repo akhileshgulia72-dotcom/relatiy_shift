@@ -1,7 +1,9 @@
+import '../privacy_policy_screen.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/ads_service.dart';
 import '../../services/menu_music_service.dart';
 
 import '../../data/level_catalog.dart';
@@ -1106,6 +1108,42 @@ class _HomeScreenState extends State<HomeScreen>
                   setDialogState(() => musicEnabled = value);
                   await MenuMusicService.instance.setEnabled(value);
                 },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.privacy_tip_outlined, color: _cyan),
+                title: const Text(
+                  'Privacy policy',
+                  style: TextStyle(color: Colors.white),
+                ),
+                trailing: const Icon(
+                  Icons.open_in_new_rounded,
+                  color: Colors.white54,
+                  size: 18,
+                ),
+                subtitle: const Text(
+                  'Read how game data, ads, and privacy choices are handled.',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                onTap: () => Navigator.of(dialogContext).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyPolicyScreen(),
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: AdsService.instance.privacyOptionsRequired,
+                builder: (context, isRequired, _) => isRequired
+                    ? ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.tune_rounded, color: _cyan),
+                        title: const Text(
+                          'Ad privacy choices',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onTap: () => AdsService.instance.showPrivacyOptions(),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),

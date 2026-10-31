@@ -32,10 +32,12 @@ class AdsService {
       'ca-app-pub-3940256099942544/4411468910';
 
   bool _initialized = false;
+  Future<void>? _initializing;
   InterstitialAd? _interstitial;
   Future<InterstitialAd?>? _interstitialLoad;
   bool _showingInterstitial = false;
   DateTime? _lastInterstitialShown;
+  final ValueNotifier<bool> privacyOptionsRequired = ValueNotifier(false);
 
   bool get _isMobile =>
       !kIsWeb &&
@@ -47,9 +49,39 @@ class AdsService {
     return defaultTargetPlatform == TargetPlatform.iOS ? ios : android;
   }
 
-  Future<void> initialize() async {
-    if (!_isMobile || _initialized) return;
+  Future<void> initialize() {
+    if (!_isMobile || _initialized) return Future.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
+
+  Future<void> _initialize() async {
     try {
+      final updated = Completer<bool>();
+      ConsentInformation.instance.requestConsentInfoUpdate(
+        ConsentRequestParameters(),
+        () {
+          if (!updated.isCompleted) updated.complete(true);
+        },
+        (_) {
+          if (!updated.isCompleted) updated.complete(false);
+        },
+      );
+      final didUpdate = await updated.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => false,
+      );
+      if (didUpdate) {
+        privacyOptionsRequired.value =
+            await ConsentInformation.instance
+                .getPrivacyOptionsRequirementStatus() ==
+            PrivacyOptionsRequirementStatus.required;
+        await ConsentForm.loadAndShowConsentFormIfRequired((_) {}).timeout(
+          const Duration(minutes: 2),
+        );
+      }
+      if (!await _mayRequestAds()) return;
       await MobileAds.instance.initialize();
       _initialized = true;
       unawaited(_loadInterstitial());
@@ -65,6 +97,7 @@ class AdsService {
   /// gameplay benefits only when this returns true.
   Future<bool> showRewardedReward() async {
     if (!_initialized || !_isMobile) return false;
+    if (!await _mayRequestAds()) return false;
     final unitId = _unitId(
       android: _androidRewardedId,
       ios: kReleaseMode ? _iosRewardedId : _iosRewardedTestId,
@@ -141,6 +174,7 @@ class AdsService {
 
   Future<bool> _showInterstitial() async {
     if (!_initialized || !_isMobile || _showingInterstitial) return false;
+    if (!await _mayRequestAds()) return false;
     final lastShown = _lastInterstitialShown;
     if (lastShown != null &&
         DateTime.now().difference(lastShown) < const Duration(seconds: 20)) {
@@ -183,7 +217,8 @@ class AdsService {
     }
   }
 
-  Future<InterstitialAd?> _loadInterstitial() {
+  Future<InterstitialAd?> _loadInterstitial() async {
+    if (!await _mayRequestAds()) return null;
     if (_interstitial != null) return Future.value(_interstitial);
     if (_interstitialLoad != null) return _interstitialLoad!;
     final unitId = _unitId(
@@ -215,5 +250,28 @@ class AdsService {
       }),
     );
     return loaded.future;
+  }
+
+  Future<bool> _mayRequestAds() async {
+    try {
+      return await ConsentInformation.instance.canRequestAds();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> showPrivacyOptions() async {
+    if (!_isMobile || !privacyOptionsRequired.value) return false;
+    try {
+      FormError? error;
+      await ConsentForm.showPrivacyOptionsForm((value) => error = value);
+      _interstitial?.dispose();
+      _interstitial = null;
+      if (error != null) return false;
+      if (!_initialized) unawaited(initialize());
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

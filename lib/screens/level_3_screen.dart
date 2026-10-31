@@ -140,6 +140,17 @@ class _Level3ScreenState extends State<Level3Screen>
             ),
           ),
 
+          Positioned(
+            top: 8,
+            left: 12,
+            child: SafeArea(
+              child: IconButton.filledTonal(
+                tooltip: 'Back to levels',
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+            ),
+          ),
           const LevelHeader(
             mission: "MISSION 03",
             title: "SHADOW CONSTELLATION",

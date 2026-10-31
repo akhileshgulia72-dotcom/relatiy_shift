@@ -4,7 +4,6 @@ import '../core/widget/campaign_monetization_controls.dart';
 
 import '../services/level_progress_service.dart';
 import '../services/ads_service.dart';
-import 'chapter_puzzle_screen.dart';
 import 'level/level_screen.dart';
 
 /// Level 15: Gravity Collapse.
@@ -19,8 +18,7 @@ class Level15Screen extends StatefulWidget {
   State<Level15Screen> createState() => _Level15ScreenState();
 }
 
-class _Level15ScreenState extends State<Level15Screen>
-    with SingleTickerProviderStateMixin {
+class _Level15ScreenState extends State<Level15Screen> {
   static const _bg = 'assets/images/level15_gravity_collapse_bg.png';
   static const _night = Color(0xFF070B19);
   static const _cyan = Color(0xFF5DEBFF);
@@ -54,11 +52,6 @@ class _Level15ScreenState extends State<Level15Screen>
     'Stabilize the final platform',
   ];
 
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1700),
-  )..repeat(reverse: true);
-
   int _playerIndex = 0;
   final Set<int> _activeCores = <int>{};
   int _attempts = 0;
@@ -66,12 +59,6 @@ class _Level15ScreenState extends State<Level15Screen>
   bool _savingCompletion = false;
   bool _showHint = false;
   String _status = 'Activate the gravity cores, then follow the floating path.';
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
 
   Future<void> _activateCore(int core) async {
     if (_completed || _savingCompletion) return;
@@ -182,9 +169,7 @@ class _Level15ScreenState extends State<Level15Screen>
     if (!mounted) return;
     await Navigator.pushReplacement(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => const ChapterPuzzleScreen(level: 16),
-      ),
+      MaterialPageRoute<void>(builder: (_) => campaignPageForLevel(16)!),
     );
   }
 

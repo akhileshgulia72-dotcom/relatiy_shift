@@ -58,7 +58,7 @@ class _CampaignMonetizationControlsState
   }
 
   Future<void> _skip() async {
-    if (_busy) return;
+    if (_busy || !_hintShown) return;
     setState(() => _busy = true);
     final rewarded = await AdsService.instance.showRewardedSkip();
     if (!mounted) return;
@@ -102,7 +102,11 @@ class _CampaignMonetizationControlsState
             child: FilledButton.icon(
               onPressed: _busy ? null : _getHint,
               icon: Icon(_busy ? Icons.hourglass_top : Icons.lightbulb_rounded),
-              label: Text(_busy ? 'LOADING AD…' : 'HINT  •  WATCH AD'),
+              label: Text(
+                _busy
+                    ? 'LOADING AD...'
+                    : (_hintShown ? 'SHOW HINT' : 'HINT - WATCH AD'),
+              ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF23CDEB),
                 foregroundColor: const Color(0xFF04131C),
@@ -115,23 +119,25 @@ class _CampaignMonetizationControlsState
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 2,
-          child: OutlinedButton.icon(
-            onPressed: _busy ? null : _skip,
-            icon: const Icon(Icons.fast_forward_rounded, size: 18),
-            label: const Text('SKIP'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFFFD166),
-              side: const BorderSide(color: Color(0x99FFD166)),
-              minimumSize: const Size(0, 54),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+        if (_hintShown) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _skip,
+              icon: const Icon(Icons.fast_forward_rounded, size: 18),
+              label: const Text('SKIP'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFFD166),
+                side: const BorderSide(color: Color(0x99FFD166)),
+                minimumSize: const Size(0, 54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
