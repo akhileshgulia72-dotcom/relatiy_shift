@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Uses sample ad units in debug builds and the configured iOS units in release.
+/// Loads mobile ads using the configured ad units for each platform.
 class AdsService {
   AdsService._();
 
@@ -12,8 +12,10 @@ class AdsService {
 
   static const _androidRewardedId = String.fromEnvironment(
     'ADMOB_ANDROID_REWARDED_ID',
-    defaultValue: 'ca-app-pub-3940256099942544/5224354917',
+    defaultValue: 'ca-app-pub-7694497723149363/2379319467',
   );
+  static const _androidRewardedTestId =
+      'ca-app-pub-3940256099942544/5224354917';
   static const _iosRewardedId = String.fromEnvironment(
     'ADMOB_IOS_REWARDED_ID',
     defaultValue: 'ca-app-pub-7694497723149363/6627081469',
@@ -22,8 +24,10 @@ class AdsService {
       'ca-app-pub-3940256099942544/1712485313';
   static const _androidInterstitialId = String.fromEnvironment(
     'ADMOB_ANDROID_INTERSTITIAL_ID',
-    defaultValue: 'ca-app-pub-3940256099942544/1033173712',
+    defaultValue: 'ca-app-pub-7694497723149363/1752633507',
   );
+  static const _androidInterstitialTestId =
+      'ca-app-pub-3940256099942544/1033173712';
   static const _iosInterstitialId = String.fromEnvironment(
     'ADMOB_IOS_INTERSTITIAL_ID',
     defaultValue: 'ca-app-pub-7694497723149363/4454932430',
@@ -99,8 +103,8 @@ class AdsService {
     if (!_initialized || !_isMobile) return false;
     if (!await _mayRequestAds()) return false;
     final unitId = _unitId(
-      android: _androidRewardedId,
-      ios: kReleaseMode ? _iosRewardedId : _iosRewardedTestId,
+      android: kProfileMode ? _androidRewardedTestId : _androidRewardedId,
+      ios: kProfileMode ? _iosRewardedTestId : _iosRewardedId,
     );
     if (unitId == null) return false;
 
@@ -148,21 +152,26 @@ class AdsService {
 
   Future<bool> showRewardedSkip() => showRewardedReward();
 
-  /// Called from a level transition after the completion UI. It never runs
-  /// while the player is solving a puzzle.
-  Future<void> showInterstitialAtTransition() async {
-    if (!_initialized || !_isMobile) return;
+  static const _completionAdLevels = {3, 7, 10, 13, 16, 19};
+
+  /// Shows an interstitial at most once per eligible level, after completion.
+  Future<void> showInterstitialAtTransition(int completedLevel) async {
+    if (!_initialized ||
+        !_isMobile ||
+        !_completionAdLevels.contains(completedLevel)) {
+      return;
+    }
+    if (_interstitial == null) {
+      unawaited(_loadInterstitial());
+      return;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
-      final completedLevels = Iterable<int>.generate(20)
-          .where((index) => (prefs.getInt('level${index + 1}Stars') ?? 0) > 0)
-          .length;
-      const milestoneKey = 'lastInterstitialThreeMilestone';
-      final milestone = (prefs.getInt(milestoneKey) ?? 0) + 3;
-      if (completedLevels < milestone) return;
+      final shownKey = 'level${completedLevel}CompletionInterstitialShown';
+      if (prefs.getBool(shownKey) ?? false) return;
 
-      if (await _showInterstitial()) {
-        await prefs.setInt(milestoneKey, milestone);
+      if (await _showInterstitial(readyOnly: true)) {
+        await prefs.setBool(shownKey, true);
       }
     } catch (_) {
       // A failed ad must never block level completion or progression.
@@ -172,9 +181,9 @@ class AdsService {
   /// An interstitial due from navigation is shown only on a menu route.
   Future<bool> showNavigationInterstitial() => _showInterstitial();
 
-  Future<bool> _showInterstitial() async {
+  Future<bool> _showInterstitial({bool readyOnly = false}) async {
     if (!_initialized || !_isMobile || _showingInterstitial) return false;
-    if (!await _mayRequestAds()) return false;
+    if (readyOnly && _interstitial == null) return false;
     final lastShown = _lastInterstitialShown;
     if (lastShown != null &&
         DateTime.now().difference(lastShown) < const Duration(seconds: 20)) {
@@ -182,7 +191,8 @@ class AdsService {
     }
     _showingInterstitial = true;
     try {
-      final ad = await _loadInterstitial();
+      if (!await _mayRequestAds()) return false;
+      final ad = readyOnly ? _interstitial : await _loadInterstitial();
       if (ad == null) return false;
       _interstitial = null;
       final dismissed = Completer<void>();
@@ -222,8 +232,10 @@ class AdsService {
     if (_interstitial != null) return Future.value(_interstitial);
     if (_interstitialLoad != null) return _interstitialLoad!;
     final unitId = _unitId(
-      android: _androidInterstitialId,
-      ios: kReleaseMode ? _iosInterstitialId : _iosInterstitialTestId,
+      android: kProfileMode
+          ? _androidInterstitialTestId
+          : _androidInterstitialId,
+      ios: kProfileMode ? _iosInterstitialTestId : _iosInterstitialId,
     );
     if (unitId == null) return Future.value(null);
 
