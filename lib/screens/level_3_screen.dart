@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home/widgets/level_header.dart';
 import 'level_4_screen.dart';
+import '../services/ads_service.dart';
 
 class Level3Screen extends StatefulWidget {
   const Level3Screen({super.key});
@@ -36,6 +37,7 @@ class _Level3ScreenState extends State<Level3Screen>
 
   bool showConstellation = true;
   bool completed = false;
+  bool _leaving = false;
   bool usedHint = false;
   int attempts = 0;
 
@@ -287,12 +289,7 @@ class _Level3ScreenState extends State<Level3Screen>
                         ),
                         const SizedBox(height: 20),
                         ElevatedButton(
-                          onPressed: () => Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const Level4Screen(),
-                            ),
-                          ),
+                          onPressed: _leaving ? null : _continue,
                           child: const Text('NEXT MISSION'),
                         ),
                       ],
@@ -322,6 +319,17 @@ class _Level3ScreenState extends State<Level3Screen>
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _continue() async {
+    if (!completed || _leaving) return;
+    setState(() => _leaving = true);
+    await AdsService.instance.showInterstitialAtTransition(3);
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const Level4Screen()),
     );
   }
 

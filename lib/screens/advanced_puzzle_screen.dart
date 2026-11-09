@@ -182,7 +182,7 @@ class _AdvancedPuzzleScreenState extends State<AdvancedPuzzleScreen>
   Future<void> _next() async {
     if (!_completed || !_rewardReady || _nextStarted) return;
     _nextStarted = true;
-    await AdsService.instance.showInterstitialAtTransition();
+    await AdsService.instance.showInterstitialAtTransition(widget.level);
     if (!mounted) return;
     final Widget next = switch (widget.level) {
       7 || 8 || 9 => AdvancedPuzzleScreen(level: widget.level + 1),

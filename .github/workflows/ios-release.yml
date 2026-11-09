@@ -376,7 +376,6 @@ jobs:
 
           flutter build ipa \
             --release \
-            --build-number="$((GITHUB_RUN_NUMBER + 6))" \
             --export-options-plist=ios/ExportOptions.plist \
             --dart-define=ADMOB_IOS_REWARDED_ID="$IOS_ADMOB_REWARDED_ID" \
             --dart-define=ADMOB_IOS_INTERSTITIAL_ID="$IOS_ADMOB_INTERSTITIAL_ID"

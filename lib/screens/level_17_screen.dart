@@ -96,6 +96,8 @@ class _Level17ScreenState extends State<Level17Screen> {
       await navigator.pushReplacement(
         MaterialPageRoute(
           builder: (_) => CampaignCompletionScreen(
+            level: 17,
+            continueLabel: 'NEXT LEVEL',
             title: 'ENERGY CIRCUIT',
             onContinue: () => navigator.pushReplacement(
               MaterialPageRoute(builder: (_) => const Level18Screen()),

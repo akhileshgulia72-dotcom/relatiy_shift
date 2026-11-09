@@ -145,7 +145,7 @@ class _Level1ScreenState extends State<Level1Screen>
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) {
+          builder: (dialogContext) {
             return Dialog(
               backgroundColor: Colors.transparent,
               child: Container(
@@ -289,11 +289,8 @@ class _Level1ScreenState extends State<Level1Screen>
                               ),
                             ),
                             onPressed: () {
-                              Navigator.pop(context);
-                              Navigator.pop(context);
-
-                              Navigator.pushReplacement(
-                                context,
+                              Navigator.pop(dialogContext);
+                              Navigator.of(context).pushReplacement(
                                 MaterialPageRoute(
                                   builder: (_) => const Level2Screen(),
                                 ),

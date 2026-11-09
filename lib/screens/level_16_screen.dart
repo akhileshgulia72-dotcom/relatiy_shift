@@ -386,7 +386,7 @@ class _Level16ScreenState extends State<Level16Screen>
 
   Future<void> _continue() async {
     if (!_completed || _saving) return;
-    await AdsService.instance.showInterstitialAtTransition();
+    await AdsService.instance.showInterstitialAtTransition(16);
     if (!mounted) return;
 
     final nextScreen = campaignPageForLevel(17);

@@ -128,7 +128,7 @@ class _Level4ScreenState extends State<Level4Screen>
   Future<void> continueToNext() async {
     if (!completed || leaving) return;
     leaving = true;
-    await AdsService.instance.showInterstitialAtTransition();
+    await AdsService.instance.showInterstitialAtTransition(4);
     if (!mounted) return;
     Navigator.pushReplacement(
       context,

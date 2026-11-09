@@ -209,7 +209,9 @@ class _RealityShiftPuzzleScreenState extends State<RealityShiftPuzzleScreen> {
         actions: [
           FilledButton(
             onPressed: () async {
-              await AdsService.instance.showInterstitialAtTransition();
+              await AdsService.instance.showInterstitialAtTransition(
+                widget.config.level,
+              );
               if (context.mounted) Navigator.pop(context);
             },
             child: const Text('CONTINUE'),

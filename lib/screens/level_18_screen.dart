@@ -47,6 +47,8 @@ class _Level18ScreenState extends State<Level18Screen> {
       await navigator.pushReplacement(
         MaterialPageRoute(
           builder: (_) => CampaignCompletionScreen(
+            level: 18,
+            continueLabel: 'NEXT LEVEL',
             title: 'GRAVITY LOOM',
             onContinue: () => navigator.pushReplacement(
               MaterialPageRoute(builder: (_) => const Level19Screen()),

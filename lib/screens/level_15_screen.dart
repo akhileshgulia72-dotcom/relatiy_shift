@@ -165,7 +165,7 @@ class _Level15ScreenState extends State<Level15Screen> {
 
   Future<void> _continue() async {
     if (!_completed) return;
-    await AdsService.instance.showInterstitialAtTransition();
+    await AdsService.instance.showInterstitialAtTransition(15);
     if (!mounted) return;
     await Navigator.pushReplacement(
       context,

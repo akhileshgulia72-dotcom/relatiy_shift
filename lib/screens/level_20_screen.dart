@@ -56,6 +56,7 @@ class _Level20ScreenState extends State<Level20Screen>
       await navigator.pushReplacement(
         MaterialPageRoute(
           builder: (_) => CampaignCompletionScreen(
+            level: 20,
             title: 'SHADOW WALKER',
             onContinue: () => navigator.pushReplacement(
               MaterialPageRoute(builder: (_) => const LevelScreen()),

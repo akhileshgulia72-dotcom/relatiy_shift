@@ -190,7 +190,9 @@ class _FinalRealityScreenState extends State<FinalRealityScreen> {
   Future<void> _next({bool skipped = false}) async {
     if (_leaving || _saving) return;
     _leaving = true;
-    if (!skipped) await AdsService.instance.showInterstitialAtTransition();
+    if (!skipped) {
+      await AdsService.instance.showInterstitialAtTransition(widget.level);
+    }
     if (!mounted) return;
     final next = campaignPageForLevel(widget.level + 1);
     await Navigator.pushReplacement(

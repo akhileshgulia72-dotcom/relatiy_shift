@@ -506,7 +506,7 @@ class _ChapterPuzzleScreenState extends State<ChapterPuzzleScreen>
   Future<void> _next() async {
     if (!_completed || _nextStarted) return;
     _nextStarted = true;
-    await AdsService.instance.showInterstitialAtTransition();
+    await AdsService.instance.showInterstitialAtTransition(widget.level);
     if (!mounted) return;
     if (widget.level < 20) {
       await Navigator.pushReplacement(

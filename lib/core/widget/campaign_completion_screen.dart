@@ -2,9 +2,17 @@ import 'package:flutter/material.dart';
 import '../../services/ads_service.dart';
 
 class CampaignCompletionScreen extends StatefulWidget {
-  const CampaignCompletionScreen({super.key, required this.title, required this.onContinue});
+  const CampaignCompletionScreen({
+    super.key,
+    required this.level,
+    required this.title,
+    required this.onContinue,
+    this.continueLabel = 'RETURN TO LEVELS',
+  });
+  final int level;
   final String title;
   final VoidCallback onContinue;
+  final String continueLabel;
   @override
   State<CampaignCompletionScreen> createState() => _CampaignCompletionScreenState();
 }
@@ -21,9 +29,9 @@ class _CampaignCompletionScreenState extends State<CampaignCompletionScreen> {
       const SizedBox(height:12),const Text('Energy recovered. Reality restored.',style:TextStyle(color:Colors.white70)),
       const SizedBox(height:28),FilledButton(onPressed:busy ? null : () async {
         setState(() => busy=true);
-        await AdsService.instance.showInterstitialAtTransition();
+        await AdsService.instance.showInterstitialAtTransition(widget.level);
         if(mounted) widget.onContinue();
-      },child:Text(busy ? 'PLEASE WAIT…' : 'RETURN TO LEVELS')),
+      },child:Text(busy ? 'PLEASE WAIT…' : widget.continueLabel)),
     ]))),
   ));
 }
